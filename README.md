@@ -13,3 +13,8 @@ Pins JSON batches to IPFS (Pinata). Posts a Solana Memo on devnet with `{cid, sh
 - Open IPFS CID via a public gateway
 
 **Signature:** CREATED BY WAKAMA.farm & Supported by Solana foundation
+
+## Example (devnet proof)
+```json
+{ "file": "2025-10-27T13-15-06-951Z_1f38e64f-6231-46af-bc94-f16871f8ffce.json", "cid": "bafkreihvotrcahuedloaiaqxkeuxndn3kien6awe2tj2l5m4oipijzekrq", "sha256": "1137defc1c8d5053c0c6a0c617c74e07a3af0a5ba24d9b17d38d8e0410b0184b", "tx": "3363UUoT3U3T6dnWvXYWg2r698iL14MAtkHMQ78UjkCwQ3ryMRT5ovZfZMG6zsAiKp4UjVQBZzX1b4DefqWccULd" }
+```
