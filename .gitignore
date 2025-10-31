@@ -18,3 +18,8 @@ runs/
 receipts/
 deliverables/
 screenshots/
+ingest/
+src/publish.cjs.bak
+receipts/
+runs/
+.env
