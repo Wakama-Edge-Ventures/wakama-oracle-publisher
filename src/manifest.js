@@ -28,7 +28,12 @@ function readFirstLine(filePath) {
 
 function fileUsesV2(filePath) {
   const first = readFirstLine(filePath);
-  return first.includes("team") || first.includes("source");
+  // Détection stricte pour éviter tout faux positif
+  if (!first) return false;
+  if (first === HEADER_V2.trim()) return true;
+  if (first === HEADER_V1.trim()) return false;
+  // fallback permissif en cas d'ancien header custom
+  return first.includes(",team") || first.includes(",source");
 }
 
 /**
@@ -60,12 +65,14 @@ export function appendRow(row = {}) {
     const source = row.source ?? "";
     const line = `${file},${cid},${sha256},${tx},${ts},${team},${source}\n`;
     fs.appendFileSync(filePath, line);
-  } else {
-    // fallback V1
-    if (readFirstLine(filePath) === "") {
-      fs.writeFileSync(filePath, HEADER_V1);
-    }
-    const line = `${file},${cid},${sha256},${tx},${ts}\n`;
-    fs.appendFileSync(filePath, line);
+    return;
   }
+
+  // fallback V1
+  const first = readFirstLine(filePath);
+  if (!first) {
+    fs.writeFileSync(filePath, HEADER_V1);
+  }
+  const line = `${file},${cid},${sha256},${tx},${ts}\n`;
+  fs.appendFileSync(filePath, line);
 }
