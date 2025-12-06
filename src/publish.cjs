@@ -420,7 +420,7 @@ function confirmTx(sig) {
     `${FNAME},${cid},${shaLocal},${tx},${new Date().toISOString()}\n`,
   );
 
-  // 5) receipt JSON (M2 canonical)
+  // 5) receipt JSON (M2 canonical + count/ts_min/ts_max)
   const receiptsDir = path.join(process.cwd(), 'receipts');
   fs.mkdirSync(receiptsDir, { recursive: true });
   const rPath = path.join(receiptsDir, `${Date.now()}-receipt.json`);
@@ -433,6 +433,12 @@ function confirmTx(sig) {
     gw: GW,
     source: SOURCE,
     team: team || PUBLISH_TEAM,
+
+    // ✅ NEW: reprend la vérité du memoPayload
+    count: memoPayload?.count ?? null,
+    ts_min: memoPayload?.ts_min ?? null,
+    ts_max: memoPayload?.ts_max ?? null,
+
     ts: new Date().toISOString(),
     status: txInfo?.status || (tx ? 'submitted' : 'n/a'),
     slot: txInfo?.slot || null,
