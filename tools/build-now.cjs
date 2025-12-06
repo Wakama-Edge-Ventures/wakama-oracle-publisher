@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+// tools/build-now.cjs
 // CJS, Node >=18
+
 const fs = require('fs');
 const path = require('path');
 
@@ -10,14 +12,7 @@ const receiptsDir = process.argv[2] || 'receipts';
 // Si tu veux sortir localement dans ce repo, passe un 3e argument.
 const outPath =
   process.argv[3] ||
-  path.join(
-    __dirname,
-    '..',
-    '..',
-    'wakama-dashboard',
-    'public',
-    'now.json',
-  );
+  path.join(__dirname, '..', '..', 'wakama-dashboard', 'public', 'now.json');
 
 // Utils
 const readJsonSafe = (p) => {
@@ -29,14 +24,32 @@ const readJsonSafe = (p) => {
 };
 const uniq = (arr) => Array.from(new Set(arr));
 
-// ---- M2: normalisation douce team (ne casse rien) ----
-function normalizeTeam(team) {
-  const t = (team || '').trim();
-  if (!t) return '';
-  if (t === 'Wakama Core') return 'Wakama_team';
-  if (t === 'team_wakama') return 'Wakama_team';
-  if (t === 'Wakama Team') return 'Wakama_team';
-  return t;
+// ---- M2: team canonical ----
+const CANONICAL_TEAM_ID = 'Wakama_team';
+
+const TEAM_ALIASES = {
+  'Wakama Core': CANONICAL_TEAM_ID,
+  'team_wakama': CANONICAL_TEAM_ID,
+  'Wakama Team': CANONICAL_TEAM_ID,
+  'Wakama team': CANONICAL_TEAM_ID,
+  'Wakama_team': CANONICAL_TEAM_ID,
+};
+
+function normalizeTeam(raw) {
+  const t = (raw || '').toString().trim();
+  if (!t) return CANONICAL_TEAM_ID; // ✅ default canonique
+  return TEAM_ALIASES[t] || t;
+}
+
+function normalizeSource(raw) {
+  const s = (raw || '').toString().trim();
+  return s; // on ne force pas un default ici pour ne rien casser
+}
+
+function normalizeStatus(rawStatus, tx) {
+  const s = (rawStatus || '').toString().trim();
+  if (s && s !== 'unknown') return s;
+  return tx ? 'submitted' : 'n/a';
 }
 
 // Collecte
@@ -70,7 +83,10 @@ for (const f of files) {
   const team = normalizeTeam(rawTeam);
 
   // ✅ source: string safe
-  const source = (typeof j.source === 'string' && j.source.trim()) ? j.source.trim() : '';
+  const source = normalizeSource(j.source);
+
+  // ✅ status: évite "unknown" si tx présent
+  const status = normalizeStatus(j.status, tx);
 
   items.push({
     cid,
@@ -78,13 +94,12 @@ for (const f of files) {
     file: j.file || f, // garder le nom “logique” si présent
     sha256,
     ts,
-    // champs optionnels M2+
-    status: j.status || (tx ? 'submitted' : 'n/a'),
+    status,
     slot: typeof j.slot === 'number' ? j.slot : null,
     source,
     team,
   });
-
+}
 
 // Tri: plus récent en premier par ts (string compare OK sur ISO)
 items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
