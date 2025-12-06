@@ -5,17 +5,43 @@ const path = require('path');
 
 // Args compatibles (ne rien casser)
 const receiptsDir = process.argv[2] || 'receipts';
-const outPath = process.argv[3] || path.join(__dirname, '..', '..', 'wakama-dashboard', 'public', 'now.json');
+
+// Par défaut on conserve ton chemin actuel (cross-repo).
+// Si tu veux sortir localement dans ce repo, passe un 3e argument.
+const outPath =
+  process.argv[3] ||
+  path.join(
+    __dirname,
+    '..',
+    '..',
+    'wakama-dashboard',
+    'public',
+    'now.json',
+  );
 
 // Utils
 const readJsonSafe = (p) => {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
 };
 const uniq = (arr) => Array.from(new Set(arr));
 
+// ---- M2: normalisation douce team (ne casse rien) ----
+function normalizeTeam(team) {
+  const t = (team || '').trim();
+  if (!t) return '';
+  if (t === 'Wakama Core') return 'Wakama_team';
+  if (t === 'team_wakama') return 'Wakama_team';
+  if (t === 'Wakama Team') return 'Wakama_team';
+  return t;
+}
+
 // Collecte
 const files = (fs.existsSync(receiptsDir) ? fs.readdirSync(receiptsDir) : [])
-  .filter(f => f.endsWith('.json'))
+  .filter((f) => f.endsWith('.json'))
   .sort(); // tri alpha; on triera par ts plus bas
 
 const items = [];
@@ -28,21 +54,26 @@ for (const f of files) {
   const cid = j.cid || j.IpfsHash || null;
   const tx = j.tx || '';
   const sha256 = j.sha256 || '';
+
   // ts prioritaire côté reçu, sinon fallback sur nom de fichier (sans .json)
   const ts = (j.ts && String(j.ts)) || f.replace(/\.json$/, '');
 
   if (!cid) continue; // ignorer reçus incomplets
 
+  const team = normalizeTeam(j.team || '');
+  const source = j.source || '';
+
   items.push({
     cid,
     tx,
-    file: j.file || f,          // garder le nom “logique” si présent
+    file: j.file || f, // garder le nom “logique” si présent
     sha256,
     ts,
-    // nouveaux champs (optionnels)
+    // champs optionnels M2+
     status: j.status || (tx ? 'submitted' : 'n/a'),
-    slot: (typeof j.slot === 'number' ? j.slot : null),
-    source: j.source || ''      // 'simulated' / 'ingest' si renseigné
+    slot: typeof j.slot === 'number' ? j.slot : null,
+    source,
+    team,
   });
 }
 
@@ -51,9 +82,9 @@ items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
 
 const totals = {
   files: items.length,
-  cids: uniq(items.map(it => it.cid)).length,
-  onchainTx: items.filter(it => it.tx && String(it.tx).length > 0).length,
-  lastTs: items.length ? items[0].ts : '—'
+  cids: uniq(items.map((it) => it.cid)).length,
+  onchainTx: items.filter((it) => it.tx && String(it.tx).length > 0).length,
+  lastTs: items.length ? items[0].ts : '—',
 };
 
 // Sortie: ne pas tronquer ici; le dashboard tranche déjà à 50
