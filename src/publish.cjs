@@ -45,6 +45,31 @@ const GW = (
   'https://gateway.pinata.cloud/ipfs'
 ).replace(/\/+$/, '');
 
+// -------- M2 team canonicalization --------
+// Canonical key everywhere: "Wakama_team"
+const DEFAULT_TEAM_ID = 'Wakama_team';
+
+const TEAM_ALIASES = {
+  'Wakama Core': DEFAULT_TEAM_ID,
+  team_wakama: DEFAULT_TEAM_ID,
+  'Wakama Team': DEFAULT_TEAM_ID,
+  'Wakama team': DEFAULT_TEAM_ID,
+  Wakama_team: DEFAULT_TEAM_ID,
+};
+
+function normalizeTeamId(raw) {
+  const t = (raw || '').trim();
+  return TEAM_ALIASES[t] || t || DEFAULT_TEAM_ID;
+}
+
+// optional override for this publisher instance
+const PUBLISH_TEAM_RAW =
+  process.env.PUBLISH_TEAM ||
+  process.env.TEAM_ID ||
+  DEFAULT_TEAM_ID;
+
+const PUBLISH_TEAM = normalizeTeamId(PUBLISH_TEAM_RAW);
+
 // identité locale
 const SELF = (() => {
   try {
@@ -238,10 +263,13 @@ function buildSimulatedBatch() {
     bounds: [5, 95],
   });
 
+  const team = PUBLISH_TEAM;
+
   const batch = {
     type: 'wakama.sensor.batch',
     version: 1,
     source: 'simulated',
+    team, // ✅ M2 canonical team included
     site,
     ts,
     readings: [dhtTemp, dhtHum, dsSoilT, soilPct],
@@ -279,8 +307,16 @@ function buildSimulatedBatch() {
     filePath: tmpPath,
     fileName: fname,
     shaLocal: sha,
-    memoPayload: { cid: null, sha256: sha, count: flatCount, ts_min, ts_max },
+    memoPayload: {
+      cid: null,
+      sha256: sha,
+      team, // ✅ included in memo
+      count: flatCount,
+      ts_min,
+      ts_max,
+    },
     source: 'simulated',
+    team,
   };
 }
 
@@ -310,7 +346,7 @@ function confirmTx(sig) {
 // ---- Main ----
 (async () => {
   const isSim = process.argv.includes('--sim');
-  let PATH_JSON, FNAME, SOURCE, shaLocal, memoPayload;
+  let PATH_JSON, FNAME, SOURCE, shaLocal, memoPayload, team;
 
   if (isSim) {
     const sim = buildSimulatedBatch();
@@ -319,6 +355,7 @@ function confirmTx(sig) {
     SOURCE = sim.source;
     shaLocal = sim.shaLocal;
     memoPayload = sim.memoPayload;
+    team = sim.team;
   } else {
     PATH_JSON = process.argv[2] || newestBatch();
     FNAME = path.basename(PATH_JSON);
@@ -326,9 +363,14 @@ function confirmTx(sig) {
     shaLocal = sha256File(PATH_JSON);
 
     const batch = JSON.parse(fs.readFileSync(PATH_JSON, 'utf8'));
+
+    // ✅ normalize team from batch or fallback to publisher default
+    team = normalizeTeamId(batch.team || PUBLISH_TEAM);
+
     memoPayload = {
       cid: null,
       sha256: shaLocal,
+      team, // ✅ included in memo
       count: batch.count || undefined,
       ts_min: batch.ts_min,
       ts_max: batch.ts_max,
@@ -374,6 +416,7 @@ function confirmTx(sig) {
     file: FNAME,
     gw: GW,
     source: SOURCE,
+    team: team || PUBLISH_TEAM, // ✅ canonical team exported
     ts: new Date().toISOString(),
     status: txInfo?.status || (tx ? 'submitted' : 'n/a'),
     slot: txInfo?.slot || null,
@@ -388,6 +431,7 @@ function confirmTx(sig) {
         file: FNAME,
         cid,
         sha256: shaLocal,
+        team: team || PUBLISH_TEAM,
         tx,
         gw: GW,
         receipt: rPath,
