@@ -60,8 +60,17 @@ for (const f of files) {
 
   if (!cid) continue; // ignorer reçus incomplets
 
-  const team = normalizeTeam(j.team || '');
-  const source = j.source || '';
+  // ✅ team: accepte legacy keys + fallback canonique
+  const rawTeam =
+    (typeof j.team === 'string' && j.team) ||
+    (typeof j.team_id === 'string' && j.team_id) ||
+    (typeof j.teamKey === 'string' && j.teamKey) ||
+    '';
+
+  const team = normalizeTeam(rawTeam);
+
+  // ✅ source: string safe
+  const source = (typeof j.source === 'string' && j.source.trim()) ? j.source.trim() : '';
 
   items.push({
     cid,
@@ -75,7 +84,7 @@ for (const f of files) {
     source,
     team,
   });
-}
+
 
 // Tri: plus récent en premier par ts (string compare OK sur ISO)
 items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
