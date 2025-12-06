@@ -37,13 +37,14 @@ const TEAM_ALIASES = {
 
 function normalizeTeam(raw) {
   const t = (raw || '').trim();
-  if (!t) return 'Wakama_team';
-  if (t === 'Wakama Core') return 'Wakama_team';
-  if (t === 'team_wakama') return 'Wakama_team';
-  if (t === 'Wakama Team') return 'Wakama_team';
-  if (t === 'Wakama team') return 'Wakama_team';
+  if (!t) return CANONICAL_TEAM_ID;
+  if (t === 'Wakama Core') return CANONICAL_TEAM_ID;
+  if (t === 'team_wakama') return CANONICAL_TEAM_ID;
+  if (t === 'Wakama Team') return CANONICAL_TEAM_ID;
+  if (t === 'Wakama team') return CANONICAL_TEAM_ID;
   return t;
 }
+
 
 
 function normalizeSource(raw) {
@@ -86,7 +87,8 @@ for (const f of files) {
   '';
 
 
-  const team = normalizeTeam(rawTeam);
+  const team = normalizeTeam(rawTeam) || CANONICAL_TEAM_ID;
+
 
   // ✅ source: string safe
   const source = normalizeSource(j.source);
