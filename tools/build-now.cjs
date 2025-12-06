@@ -36,10 +36,15 @@ const TEAM_ALIASES = {
 };
 
 function normalizeTeam(raw) {
-  const t = (raw || '').toString().trim();
-  if (!t) return CANONICAL_TEAM_ID; // ✅ default canonique
-  return TEAM_ALIASES[t] || t;
+  const t = (raw || '').trim();
+  if (!t) return 'Wakama_team';
+  if (t === 'Wakama Core') return 'Wakama_team';
+  if (t === 'team_wakama') return 'Wakama_team';
+  if (t === 'Wakama Team') return 'Wakama_team';
+  if (t === 'Wakama team') return 'Wakama_team';
+  return t;
 }
+
 
 function normalizeSource(raw) {
   const s = (raw || '').toString().trim();
@@ -75,10 +80,11 @@ for (const f of files) {
 
   // ✅ team: accepte legacy keys + fallback canonique
   const rawTeam =
-    (typeof j.team === 'string' && j.team) ||
-    (typeof j.team_id === 'string' && j.team_id) ||
-    (typeof j.teamKey === 'string' && j.teamKey) ||
-    '';
+  (typeof j.team === 'string' && j.team) ||
+  (typeof j.team_id === 'string' && j.team_id) ||
+  (typeof j.teamKey === 'string' && j.teamKey) ||
+  '';
+
 
   const team = normalizeTeam(rawTeam);
 
