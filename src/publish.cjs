@@ -13,15 +13,14 @@ const BASE_MS = parseInt(process.env.PUBLISH_BACKOFF_MS || '800', 10);
 
 // helpers env PINATA (multi-names)
 function getPinataCreds() {
-  // on lit à CHAQUE appel, pas au chargement du fichier
   const apiKey =
     process.env.PINATA_API_KEY ||
-    process.env.PINATA_KEY || // fallback possible
+    process.env.PINATA_KEY ||
     '';
 
   const apiSecret =
     process.env.PINATA_API_SECRET ||
-    process.env.PINATA_SECRET_API_KEY || // ancien nom
+    process.env.PINATA_SECRET_API_KEY ||
     '';
 
   const jwt = process.env.PINATA_JWT || '';
@@ -46,19 +45,22 @@ const GW = (
 ).replace(/\/+$/, '');
 
 // -------- M2 team canonicalization --------
-// Canonical key everywhere: "Wakama_team"
 const DEFAULT_TEAM_ID = 'Wakama_team';
 
 const TEAM_ALIASES = {
   'Wakama Core': DEFAULT_TEAM_ID,
-  team_wakama: DEFAULT_TEAM_ID,
+  'team_wakama': DEFAULT_TEAM_ID,
   'Wakama Team': DEFAULT_TEAM_ID,
   'Wakama team': DEFAULT_TEAM_ID,
-  Wakama_team: DEFAULT_TEAM_ID,
+  'Wakama_team': DEFAULT_TEAM_ID,
 };
 
+function strTrim(x) {
+  return (x == null) ? '' : String(x).trim();
+}
+
 function normalizeTeamId(raw) {
-  const t = (raw || '').trim();
+  const t = strTrim(raw);
   return TEAM_ALIASES[t] || t || DEFAULT_TEAM_ID;
 }
 
@@ -73,10 +75,8 @@ const PUBLISH_TEAM = normalizeTeamId(PUBLISH_TEAM_RAW);
 // identité locale
 const SELF = (() => {
   try {
-    const j = JSON.parse(fs.readFileSync(WALLET, 'utf8'));
-    // si c'est un keypair JSON solana (array de 64 nombres) ça ne contient pas le pubkey
-    // donc on tombe dans le catch
-  } catch (e) {
+    JSON.parse(fs.readFileSync(WALLET, 'utf8'));
+  } catch {
     // ignore
   }
   try {
@@ -99,11 +99,13 @@ function newestBatch() {
   const ingestDir =
     process.env.INGEST_DIR ||
     path.join(process.env.HOME || '/home', 'dev/wakama/wakama-oracle-ingest');
+
   const dir = path.join(ingestDir, 'batches');
   const files = fs
     .readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .sort();
+
   if (!files.length) throw new Error('no batch json in ' + dir);
   return path.join(dir, files[files.length - 1]);
 }
@@ -113,15 +115,19 @@ function sha256File(p) {
   h.update(fs.readFileSync(p));
   return h.digest('hex');
 }
+
 function sha256Str(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
 }
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
+
 function jitter(ms) {
   return Math.floor(ms * (0.8 + Math.random() * 0.4));
 }
+
 function curlJson(cmd) {
   const out = execSync(cmd, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -129,6 +135,7 @@ function curlJson(cmd) {
   }).toString();
   return JSON.parse(out);
 }
+
 function shaFromGateway(cid, gw) {
   const cmd = `curl -sL "${gw}/${cid}" | sha256sum | awk '{print $1}'`;
   return execSync(cmd, { shell: '/bin/bash' }).toString().trim();
@@ -160,7 +167,6 @@ async function withRetry(name, fn) {
 async function uploadPinataFile(filePath, fname) {
   const { apiKey, apiSecret, jwt } = getPinataCreds();
 
-  // priorité au JWT si dispo
   if (jwt) {
     return withRetry('pinFileToIPFS(JWT)', () => {
       const cmd = [
@@ -174,7 +180,6 @@ async function uploadPinataFile(filePath, fname) {
     });
   }
 
-  // sinon API KEY + SECRET
   if (!apiKey || !apiSecret) {
     throw new Error('PINATA_API_KEY/SECRET missing (or PINATA_JWT missing)');
   }
@@ -202,19 +207,20 @@ async function emitTxMemo(memo) {
     })
       .toString()
       .trim();
-    return out.split(/\s+/).pop(); // tx sig
+    return out.split(/\s+/).pop();
   });
 }
 
 // ---- Générateur capteurs simulés ----
 function randn() {
-  let u = 0,
-    v = 0;
+  let u = 0, v = 0;
   while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
+
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
 function genSeries({ kind, n = 60, base, driftPerMin = 0.01, noise = 0.5, bounds }) {
   const points = [];
   const now = Date.now();
@@ -226,6 +232,7 @@ function genSeries({ kind, n = 60, base, driftPerMin = 0.01, noise = 0.5, bounds
   }
   return { kind, points };
 }
+
 function buildSimulatedBatch() {
   const ts = new Date().toISOString();
   const site = { zone: 'raviart', field: 'bouake', device: 'esp32-001' };
@@ -269,7 +276,7 @@ function buildSimulatedBatch() {
     type: 'wakama.sensor.batch',
     version: 1,
     source: 'simulated',
-    team, // ✅ M2 canonical team included
+    team,
     site,
     ts,
     readings: [dhtTemp, dhtHum, dsSoilT, soilPct],
@@ -281,6 +288,7 @@ function buildSimulatedBatch() {
     dhtHum.points.length +
     dsSoilT.points.length +
     soilPct.points.length;
+
   const ts_min = Math.min(
     ...[dhtTemp, dhtHum, dsSoilT, soilPct].flatMap((s) => s.points.map((p) => p.t)),
   );
@@ -297,9 +305,8 @@ function buildSimulatedBatch() {
 
   const tmpDir = path.join(process.cwd(), 'tmp');
   fs.mkdirSync(tmpDir, { recursive: true });
-  const fname = `wakama-batch-${new Date()
-    .toISOString()
-    .replace(/[:.]/g, '-')}.json`;
+
+  const fname = `wakama-batch-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
   const tmpPath = path.join(tmpDir, fname);
   fs.writeFileSync(tmpPath, jsonStr, 'utf8');
 
@@ -310,7 +317,7 @@ function buildSimulatedBatch() {
     memoPayload: {
       cid: null,
       sha256: sha,
-      team, // ✅ included in memo
+      team,
       count: flatCount,
       ts_min,
       ts_max,
@@ -331,6 +338,7 @@ function confirmTx(sig) {
         shell: '/bin/bash',
       },
     ).toString();
+
     const j = JSON.parse(out);
     const status =
       j?.value?.confirmationStatus ||
@@ -346,6 +354,7 @@ function confirmTx(sig) {
 // ---- Main ----
 (async () => {
   const isSim = process.argv.includes('--sim');
+
   let PATH_JSON, FNAME, SOURCE, shaLocal, memoPayload, team;
 
   if (isSim) {
@@ -359,18 +368,23 @@ function confirmTx(sig) {
   } else {
     PATH_JSON = process.argv[2] || newestBatch();
     FNAME = path.basename(PATH_JSON);
-    SOURCE = 'ingest';
     shaLocal = sha256File(PATH_JSON);
 
     const batch = JSON.parse(fs.readFileSync(PATH_JSON, 'utf8'));
 
-    // ✅ normalize team from batch or fallback to publisher default
-    team = normalizeTeamId(batch.team || PUBLISH_TEAM);
+    // ✅ preserve source if present, otherwise default
+    SOURCE = strTrim(batch.source) || 'ingest';
+
+    // ✅ read team from batch if present
+    const batchTeam =
+      batch.team || batch.team_id || batch.teamKey || null;
+
+    team = normalizeTeamId(batchTeam || PUBLISH_TEAM);
 
     memoPayload = {
       cid: null,
       sha256: shaLocal,
-      team, // ✅ included in memo
+      team,
       count: batch.count || undefined,
       ts_min: batch.ts_min,
       ts_max: batch.ts_max,
@@ -398,7 +412,7 @@ function confirmTx(sig) {
 
   const txInfo = confirmTx(tx);
 
-  // 4) receipt
+  // 4) runs csv (format conservé)
   const day = new Date().toISOString().slice(0, 10);
   fs.mkdirSync('runs', { recursive: true });
   fs.appendFileSync(
@@ -406,9 +420,11 @@ function confirmTx(sig) {
     `${FNAME},${cid},${shaLocal},${tx},${new Date().toISOString()}\n`,
   );
 
+  // 5) receipt JSON (M2 canonical)
   const receiptsDir = path.join(process.cwd(), 'receipts');
   fs.mkdirSync(receiptsDir, { recursive: true });
   const rPath = path.join(receiptsDir, `${Date.now()}-receipt.json`);
+
   const receipt = {
     cid,
     sha256: shaLocal,
@@ -416,11 +432,12 @@ function confirmTx(sig) {
     file: FNAME,
     gw: GW,
     source: SOURCE,
-    team: team || PUBLISH_TEAM, // ✅ canonical team exported
+    team: team || PUBLISH_TEAM,
     ts: new Date().toISOString(),
     status: txInfo?.status || (tx ? 'submitted' : 'n/a'),
     slot: txInfo?.slot || null,
   };
+
   fs.writeFileSync(rPath, JSON.stringify(receipt, null, 2), 'utf8');
 
   console.log(
