@@ -96,17 +96,28 @@ function inferTeamFromFile(fileName) {
   return '';
 }
 
-// ---- M1 compat: fallback count depuis le nom du batch ----
-// Ex: scak-korhogo-1000-zone-A-Prod-1.json -> 1000
-function inferCountFromFile(fileName) {
-  const f = (fileName || '').toLowerCase();
-  const m = f.match(/-(\d{2,})-(?:[^/]+)\.json$/) || f.match(/-(\d{2,})-/);
+// ---- points/count helpers ----
+const toNum = (v) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s && !Number.isNaN(Number(s))) return Number(s);
+  }
+  return null;
+};
+
+// Fallback M1: inférer depuis le nom du fichier
+// ex: "scak-korhogo-1000-zone-A-Prod-1.json" => 1000
+function inferCountFromFileName(fileName) {
+  const s = (fileName || '').toString();
+  // prend un groupe de >=3 chiffres entouré par "-"
+  const m = s.match(/-(\d{3,})-/);
   if (!m) return null;
 
-  const n = Number.parseInt(m[1], 10);
+  const n = Number(m[1]);
   if (!Number.isFinite(n) || n <= 0) return null;
 
-  // garde-fou léger pour éviter des nombres absurdes
+  // garde-fou léger
   if (n > 5_000_000) return null;
 
   return n;
@@ -174,26 +185,22 @@ for (const p of files) {
   // ✅ status: évite "unknown" si tx présent
   const status = normalizeStatus(j.status, tx);
 
-  // ✅ compat M1/M2 points/count + legacy keys + fallback filename
-  const metaCount =
-    j.meta && typeof j.meta.count === 'number' ? j.meta.count : null;
+  // ✅ compat M1/M2 points/count robuste + fallback filename
+  const inferredFromName = inferCountFromFileName(j.file || f);
 
   const count =
-    typeof j.count === 'number'
-      ? j.count
-      : typeof j.points === 'number'
-      ? j.points
-      : typeof j.events === 'number'
-      ? j.events
-      : typeof j.records === 'number'
-      ? j.records
-      : typeof j.rows === 'number'
-      ? j.rows
-      : typeof metaCount === 'number'
-      ? metaCount
-      : inferCountFromFile(j.file || '')
-      ? inferCountFromFile(j.file || '')
-      : null;
+    toNum(j.count) ??
+    toNum(j.points) ??
+    toNum(j.total_points) ??
+    toNum(j.totalPoints) ??
+    toNum(j.metrics && j.metrics.count) ??
+    toNum(j.metrics && j.metrics.points) ??
+    toNum(j.summary && j.summary.count) ??
+    toNum(j.summary && j.summary.points) ??
+    toNum(j.stats && j.stats.count) ??
+    toNum(j.stats && j.stats.points) ??
+    inferredFromName ??
+    null;
 
   const points = count;
 
