@@ -86,6 +86,32 @@ function normalizeTeam(raw) {
   return TEAM_ALIASES[t] || t;
 }
 
+function inferTeamFromFile(fileName) {
+  const f = (fileName || '').toLowerCase();
+
+  if (f.includes('scak-')) return 'team-scak-coop';
+  if (f.includes('makm2-')) return 'team-makm2';
+  if (f.includes('techlab-')) return 'team-techlab-cme';
+
+  return '';
+}
+
+// ---- M1 compat: fallback count depuis le nom du batch ----
+// Ex: scak-korhogo-1000-zone-A-Prod-1.json -> 1000
+function inferCountFromFile(fileName) {
+  const f = (fileName || '').toLowerCase();
+  const m = f.match(/-(\d{2,})-(?:[^/]+)\.json$/) || f.match(/-(\d{2,})-/);
+  if (!m) return null;
+
+  const n = Number.parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  // garde-fou léger pour éviter des nombres absurdes
+  if (n > 5_000_000) return null;
+
+  return n;
+}
+
 function normalizeSource(raw) {
   const s = (raw || '').toString().trim();
   return s; // on ne force pas un default ici pour ne rien casser
@@ -132,11 +158,12 @@ for (const p of files) {
 
   if (!cid) continue; // ignorer reçus incomplets
 
-  // ✅ team: accepte legacy keys + fallback canonique
+  // ✅ team: accepte legacy keys + fallback par file + fallback canonique
   const rawTeam =
     (typeof j.team === 'string' && j.team) ||
     (typeof j.team_id === 'string' && j.team_id) ||
     (typeof j.teamKey === 'string' && j.teamKey) ||
+    inferTeamFromFile(j.file || f) ||
     '';
 
   const team = normalizeTeam(rawTeam) || CANONICAL_TEAM_ID;
@@ -147,12 +174,25 @@ for (const p of files) {
   // ✅ status: évite "unknown" si tx présent
   const status = normalizeStatus(j.status, tx);
 
-  // ✅ compat M1/M2 points/count
+  // ✅ compat M1/M2 points/count + legacy keys + fallback filename
+  const metaCount =
+    j.meta && typeof j.meta.count === 'number' ? j.meta.count : null;
+
   const count =
     typeof j.count === 'number'
       ? j.count
       : typeof j.points === 'number'
       ? j.points
+      : typeof j.events === 'number'
+      ? j.events
+      : typeof j.records === 'number'
+      ? j.records
+      : typeof j.rows === 'number'
+      ? j.rows
+      : typeof metaCount === 'number'
+      ? metaCount
+      : inferCountFromFile(j.file || '')
+      ? inferCountFromFile(j.file || '')
       : null;
 
   const points = count;
