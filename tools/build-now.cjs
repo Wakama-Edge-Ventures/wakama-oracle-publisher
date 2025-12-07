@@ -24,6 +24,49 @@ const readJsonSafe = (p) => {
 };
 const uniq = (arr) => Array.from(new Set(arr));
 
+const isDir = (p) => {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+function walk(dir) {
+  let out = [];
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return out;
+  }
+
+  for (const name of entries) {
+    const p = path.join(dir, name);
+    let st;
+    try {
+      st = fs.statSync(p);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) {
+      out = out.concat(walk(p));
+    } else {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function findReceiptsUnder(root) {
+  const all = walk(root);
+  return all.filter(
+    (p) =>
+      p.includes(`${path.sep}receipts${path.sep}`) &&
+      p.endsWith('-receipt.json')
+  );
+}
+
 // ---- M2: team canonical ----
 const CANONICAL_TEAM_ID = 'Wakama_team';
 
@@ -33,6 +76,7 @@ const TEAM_ALIASES = {
   'Wakama Team': CANONICAL_TEAM_ID,
   'Wakama team': CANONICAL_TEAM_ID,
   'Wakama_team': CANONICAL_TEAM_ID,
+  'CAPN Wakama Team': CANONICAL_TEAM_ID,
   'UJLoG Wakama Team': CANONICAL_TEAM_ID,
 };
 
@@ -53,14 +97,28 @@ function normalizeStatus(rawStatus, tx) {
   return tx ? 'submitted' : 'n/a';
 }
 
-// Collecte
-const files = (fs.existsSync(receiptsDir) ? fs.readdirSync(receiptsDir) : [])
-  .filter((f) => f.endsWith('.json'))
-  .sort(); // tri alpha; on triera par ts plus bas
+// Collecte (2 modes)
+// 1) Mode classique: receiptsDir contient directement des .json
+// 2) Mode root-scan: receiptsDir est un root (ex: ~/dev/wakama),
+//    on scanne tous les */receipts/*-receipt.json
+let files = [];
 
+if (isDir(receiptsDir)) {
+  const direct = fs
+    .readdirSync(receiptsDir)
+    .filter((f) => f.endsWith('.json'));
+
+  if (direct.length > 0) {
+    files = direct.map((f) => path.join(receiptsDir, f)).sort();
+  } else {
+    files = findReceiptsUnder(receiptsDir).sort();
+  }
+}
+
+// Build items
 const items = [];
-for (const f of files) {
-  const p = path.join(receiptsDir, f);
+for (const p of files) {
+  const f = path.basename(p);
   const j = readJsonSafe(p);
   if (!j) continue;
 
@@ -89,7 +147,7 @@ for (const f of files) {
   // ✅ status: évite "unknown" si tx présent
   const status = normalizeStatus(j.status, tx);
 
-  // ✅ NEW: compat M1/M2 points/count
+  // ✅ compat M1/M2 points/count
   const count =
     typeof j.count === 'number'
       ? j.count
