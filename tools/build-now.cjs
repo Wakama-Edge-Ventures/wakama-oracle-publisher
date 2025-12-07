@@ -33,19 +33,14 @@ const TEAM_ALIASES = {
   'Wakama Team': CANONICAL_TEAM_ID,
   'Wakama team': CANONICAL_TEAM_ID,
   'Wakama_team': CANONICAL_TEAM_ID,
+  'UJLoG Wakama Team': CANONICAL_TEAM_ID,
 };
 
 function normalizeTeam(raw) {
-  const t = (raw || '').trim();
+  const t = (raw || '').toString().trim();
   if (!t) return CANONICAL_TEAM_ID;
-  if (t === 'Wakama Core') return CANONICAL_TEAM_ID;
-  if (t === 'team_wakama') return CANONICAL_TEAM_ID;
-  if (t === 'Wakama Team') return CANONICAL_TEAM_ID;
-  if (t === 'Wakama team') return CANONICAL_TEAM_ID;
-  return t;
+  return TEAM_ALIASES[t] || t;
 }
-
-
 
 function normalizeSource(raw) {
   const s = (raw || '').toString().trim();
@@ -81,14 +76,12 @@ for (const f of files) {
 
   // ✅ team: accepte legacy keys + fallback canonique
   const rawTeam =
-  (typeof j.team === 'string' && j.team) ||
-  (typeof j.team_id === 'string' && j.team_id) ||
-  (typeof j.teamKey === 'string' && j.teamKey) ||
-  '';
-
+    (typeof j.team === 'string' && j.team) ||
+    (typeof j.team_id === 'string' && j.team_id) ||
+    (typeof j.teamKey === 'string' && j.teamKey) ||
+    '';
 
   const team = normalizeTeam(rawTeam) || CANONICAL_TEAM_ID;
-
 
   // ✅ source: string safe
   const source = normalizeSource(j.source);
@@ -96,12 +89,32 @@ for (const f of files) {
   // ✅ status: évite "unknown" si tx présent
   const status = normalizeStatus(j.status, tx);
 
+  // ✅ NEW: compat M1/M2 points/count
+  const count =
+    typeof j.count === 'number'
+      ? j.count
+      : typeof j.points === 'number'
+      ? j.points
+      : null;
+
+  const points = count;
+
   items.push({
     cid,
     tx,
     file: j.file || f, // garder le nom “logique” si présent
     sha256,
+    gw: j.gw || null,
+
+    // temps
     ts,
+    ts_min: j.ts_min || null,
+    ts_max: j.ts_max || null,
+
+    // métriques
+    count,
+    points,
+
     status,
     slot: typeof j.slot === 'number' ? j.slot : null,
     source,
