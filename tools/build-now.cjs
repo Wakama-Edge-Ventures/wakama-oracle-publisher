@@ -78,6 +78,10 @@ const TEAM_ALIASES = {
   'Wakama_team': CANONICAL_TEAM_ID,
   'CAPN Wakama Team': CANONICAL_TEAM_ID,
   'UJLoG Wakama Team': CANONICAL_TEAM_ID,
+  // M1 display compat
+  'team-scak-coop': 'SCAK Cooperative',
+  'team-makm2': 'MAKM2 Partner',
+  'team-techlab-cme': 'TechLab CME',
 };
 
 function normalizeTeam(raw) {
@@ -89,9 +93,9 @@ function normalizeTeam(raw) {
 function inferTeamFromFile(fileName) {
   const f = (fileName || '').toLowerCase();
 
-  if (f.includes('scak-')) return 'team-scak-coop';
-  if (f.includes('makm2-')) return 'team-makm2';
-  if (f.includes('techlab-')) return 'team-techlab-cme';
+  if (f.includes('scak-')) return 'SCAK Cooperative';
+  if (f.includes('makm2-')) return 'MAKM2 Partner';
+  if (f.includes('techlab-')) return 'TechLab CME';
 
   return '';
 }
