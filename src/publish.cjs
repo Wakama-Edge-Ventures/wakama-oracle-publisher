@@ -527,6 +527,11 @@ function inferCountFromBatch(batch) {
     ts: new Date().toISOString(),
     status: tx ? (txInfo?.status || 'submitted') : 'n/a',
     slot: txInfo?.slot ?? null,
+      cluster: CLUSTER,
+  rpc: RPC,
+  rpc_source: RPC_SOURCE,
+  env_rpc_url: process.env.RPC_URL || null,
+  env_anchor_provider_url: process.env.ANCHOR_PROVIDER_URL || null,
   };
 
   fs.writeFileSync(rPath, JSON.stringify(receipt, null, 2), 'utf8');
