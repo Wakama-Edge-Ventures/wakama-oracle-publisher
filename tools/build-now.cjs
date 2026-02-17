@@ -234,8 +234,13 @@ for (const p of files) {
 // Tri: plus récent en premier par ts (string compare OK sur ISO)
 items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
 
+// ✅ FIX: totals.files = uniquement les items mesurables
+const itemsWithMetrics = items.filter(
+  (it) => it.count != null || it.points != null
+);
+
 const totals = {
-  files: items.length,
+  files: itemsWithMetrics.length,
   cids: uniq(items.map((it) => it.cid)).length,
   onchainTx: items.filter((it) => it.tx && String(it.tx).length > 0).length,
   lastTs: items.length ? items[0].ts : '—',

@@ -7,24 +7,26 @@ const crypto = require('crypto');
 const { execSync } = require('child_process');
 const path = require('path');
 
+// ---- Receipts dir override (M3 safe isolation) ----
+const RECEIPTS_DIR =
+  process.env.RECEIPTS_DIR || path.join(__dirname, '..', 'receipts');
+
+try {
+  fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
+} catch (e) {
+  // ignore
+}
+
 // ---- Config retry/backoff ----
 const MAX_RETRY = parseInt(process.env.PUBLISH_RETRY_MAX || '5', 10);
 const BASE_MS = parseInt(process.env.PUBLISH_BACKOFF_MS || '800', 10);
 
 // helpers env PINATA (multi-names)
 function getPinataCreds() {
-  const apiKey =
-    process.env.PINATA_API_KEY ||
-    process.env.PINATA_KEY ||
-    '';
-
+  const apiKey = process.env.PINATA_API_KEY || process.env.PINATA_KEY || '';
   const apiSecret =
-    process.env.PINATA_API_SECRET ||
-    process.env.PINATA_SECRET_API_KEY ||
-    '';
-
+    process.env.PINATA_API_SECRET || process.env.PINATA_SECRET_API_KEY || '';
   const jwt = process.env.PINATA_JWT || '';
-
   return { apiKey, apiSecret, jwt };
 }
 
@@ -40,8 +42,7 @@ const WALLET =
   path.join(process.env.HOME || '/root', '.config/solana/id.json');
 
 const GW = (
-  process.env.NEXT_PUBLIC_IPFS_GATEWAY ||
-  'https://gateway.pinata.cloud/ipfs'
+  process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs'
 ).replace(/\/+$/, '');
 
 // -------- M2 team canonicalization --------
@@ -49,14 +50,14 @@ const DEFAULT_TEAM_ID = 'Wakama_team';
 
 const TEAM_ALIASES = {
   'Wakama Core': DEFAULT_TEAM_ID,
-  'team_wakama': DEFAULT_TEAM_ID,
+  team_wakama: DEFAULT_TEAM_ID,
   'Wakama Team': DEFAULT_TEAM_ID,
   'Wakama team': DEFAULT_TEAM_ID,
-  'Wakama_team': DEFAULT_TEAM_ID,
+  Wakama_team: DEFAULT_TEAM_ID,
 };
 
 function strTrim(x) {
-  return (x == null) ? '' : String(x).trim();
+  return x == null ? '' : String(x).trim();
 }
 
 function normalizeTeamId(raw) {
@@ -66,9 +67,7 @@ function normalizeTeamId(raw) {
 
 // optional override for this publisher instance
 const PUBLISH_TEAM_RAW =
-  process.env.PUBLISH_TEAM ||
-  process.env.TEAM_ID ||
-  DEFAULT_TEAM_ID;
+  process.env.PUBLISH_TEAM || process.env.TEAM_ID || DEFAULT_TEAM_ID;
 
 const PUBLISH_TEAM = normalizeTeamId(PUBLISH_TEAM_RAW);
 
@@ -92,7 +91,7 @@ const SELF = (() => {
 })();
 
 // ---- Modes ----
-// 1) Ingest (par défaut) : `node src/publish.cjs ingest/xxx.json`
+// 1) Ingest (par défaut) : `node src/publish.cjs ingest/xxx.json` ou `node src/publish.cjs` (newestBatch)
 // 2) Simulé (--sim) : `node src/publish.cjs --sim`
 
 function newestBatch() {
@@ -213,7 +212,8 @@ async function emitTxMemo(memo) {
 
 // ---- Générateur capteurs simulés ----
 function randn() {
-  let u = 0, v = 0;
+  let u = 0,
+    v = 0;
   while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
@@ -221,14 +221,24 @@ function randn() {
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-function genSeries({ kind, n = 60, base, driftPerMin = 0.01, noise = 0.5, bounds }) {
+function genSeries({
+  kind,
+  n = 60,
+  base,
+  driftPerMin = 0.01,
+  noise = 0.5,
+  bounds,
+}) {
   const points = [];
   const now = Date.now();
   let val = base;
   for (let i = 0; i < n; i++) {
     val += driftPerMin + noise * randn();
     val = clamp(val, bounds[0], bounds[1]);
-    points.push({ t: now - (n - 1 - i) * 60_000, v: Number(val.toFixed(2)) });
+    points.push({
+      t: now - (n - 1 - i) * 60_000,
+      v: Number(val.toFixed(2)),
+    });
   }
   return { kind, points };
 }
@@ -290,14 +300,23 @@ function buildSimulatedBatch() {
     soilPct.points.length;
 
   const ts_min = Math.min(
-    ...[dhtTemp, dhtHum, dsSoilT, soilPct].flatMap((s) => s.points.map((p) => p.t)),
+    ...[dhtTemp, dhtHum, dsSoilT, soilPct].flatMap((s) =>
+      s.points.map((p) => p.t),
+    ),
   );
   const ts_max = Math.max(
-    ...[dhtTemp, dhtHum, dsSoilT, soilPct].flatMap((s) => s.points.map((p) => p.t)),
+    ...[dhtTemp, dhtHum, dsSoilT, soilPct].flatMap((s) =>
+      s.points.map((p) => p.t),
+    ),
   );
 
   const jsonStr = JSON.stringify(
-    { ...batch, count: flatCount, ts_min, ts_max },
+    {
+      ...batch,
+      count: flatCount,
+      ts_min: new Date(ts_min).toISOString(),
+      ts_max: new Date(ts_max).toISOString(),
+    },
     null,
     2,
   );
@@ -306,7 +325,9 @@ function buildSimulatedBatch() {
   const tmpDir = path.join(process.cwd(), 'tmp');
   fs.mkdirSync(tmpDir, { recursive: true });
 
-  const fname = `wakama-batch-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  const fname = `wakama-batch-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')}.json`;
   const tmpPath = path.join(tmpDir, fname);
   fs.writeFileSync(tmpPath, jsonStr, 'utf8');
 
@@ -319,8 +340,8 @@ function buildSimulatedBatch() {
       sha256: sha,
       team,
       count: flatCount,
-      ts_min,
-      ts_max,
+      ts_min: new Date(ts_min).toISOString(),
+      ts_max: new Date(ts_max).toISOString(),
     },
     source: 'simulated',
     team,
@@ -331,13 +352,10 @@ function buildSimulatedBatch() {
 function confirmTx(sig) {
   if (!sig) return null;
   try {
-    const out = execSync(
-      `solana confirm ${sig} --url ${RPC} --output json`,
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: '/bin/bash',
-      },
-    ).toString();
+    const out = execSync(`solana confirm ${sig} --url ${RPC} --output json`, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: '/bin/bash',
+    }).toString();
 
     const j = JSON.parse(out);
     const status =
@@ -349,6 +367,27 @@ function confirmTx(sig) {
   } catch {
     return { status: 'unknown', slot: null };
   }
+}
+
+// ---- Helpers count for ingest batches (robust) ----
+function inferCountFromBatch(batch) {
+  if (!batch || typeof batch !== 'object') return undefined;
+
+  // prefer explicit count
+  if (Number.isFinite(batch.count)) return batch.count;
+  if (Number.isFinite(batch.count_field)) return batch.count_field;
+
+  // common containers
+  if (Array.isArray(batch.measures)) return batch.measures.length;
+  if (Array.isArray(batch.items)) return batch.items.length;
+  if (Array.isArray(batch.points)) return batch.points.length;
+  if (Array.isArray(batch.data)) return batch.data.length;
+
+  // sometimes measures is object with array
+  if (batch.measures && Array.isArray(batch.measures.items))
+    return batch.measures.items.length;
+
+  return undefined;
 }
 
 // ---- Main ----
@@ -376,16 +415,16 @@ function confirmTx(sig) {
     SOURCE = strTrim(batch.source) || 'ingest';
 
     // ✅ read team from batch if present
-    const batchTeam =
-      batch.team || batch.team_id || batch.teamKey || null;
-
+    const batchTeam = batch.team || batch.team_id || batch.teamKey || null;
     team = normalizeTeamId(batchTeam || PUBLISH_TEAM);
+
+    const inferredCount = inferCountFromBatch(batch);
 
     memoPayload = {
       cid: null,
       sha256: shaLocal,
       team,
-      count: batch.count || undefined,
+      count: inferredCount, // ✅ avoids "0" when count is stored in count_field or measures length
       ts_min: batch.ts_min,
       ts_max: batch.ts_max,
     };
@@ -402,7 +441,9 @@ function confirmTx(sig) {
       throw new Error('sha mismatch gateway vs local');
     }
   } else {
-    console.warn('⚠️ PUBLISH_SKIP_SHA_CHECK=1 → skipping gateway integrity check');
+    console.warn(
+      '⚠️ PUBLISH_SKIP_SHA_CHECK=1 → skipping gateway integrity check',
+    );
   }
 
   // 3) Emit tx
@@ -420,10 +461,8 @@ function confirmTx(sig) {
     `${FNAME},${cid},${shaLocal},${tx},${new Date().toISOString()}\n`,
   );
 
-  // 5) receipt JSON (M2 canonical + count/ts_min/ts_max)
-  const receiptsDir = path.join(process.cwd(), 'receipts');
-  fs.mkdirSync(receiptsDir, { recursive: true });
-  const rPath = path.join(receiptsDir, `${Date.now()}-receipt.json`);
+  // 5) receipt JSON (M3 safe isolation via RECEIPTS_DIR)
+  const rPath = path.join(RECEIPTS_DIR, `${Date.now()}-receipt.json`);
 
   const receipt = {
     cid,
@@ -434,13 +473,12 @@ function confirmTx(sig) {
     source: SOURCE,
     team: team || PUBLISH_TEAM,
 
-    // ✅ NEW: reprend la vérité du memoPayload
     count: memoPayload?.count ?? null,
     ts_min: memoPayload?.ts_min ?? null,
     ts_max: memoPayload?.ts_max ?? null,
 
     ts: new Date().toISOString(),
-    status: txInfo?.status || (tx ? 'submitted' : 'n/a'),
+    status: tx ? txInfo?.status || 'submitted' : 'n/a',
     slot: txInfo?.slot || null,
   };
 

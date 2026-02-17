@@ -5,9 +5,13 @@
   "scripts": {
     "start": "node src/publish.js",
     "verify": "node src/verify.cjs",
+
     "publish_safe": "node src/publish.cjs && npm run export_now",
     "publish_sim": "node src/publish.cjs --sim && npm run export_now",
-    "export_now": "node tools/build-now.cjs receipts ../wakama-dashboard/public/now.json"
+
+    "export_now": "node tools/build-now.cjs receipts ../wakama-dashboard/public/now.json",
+
+    "export_now_m3": "node tools/build-now.cjs receipts_m3_firestore ../wakama-dashboard/public/now_m3.json"
   },
   "dependencies": {
     "@pinata/sdk": "^2.1.0",
