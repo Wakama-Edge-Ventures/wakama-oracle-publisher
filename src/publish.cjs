@@ -45,15 +45,25 @@ const GW = (
   process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs'
 ).replace(/\/+$/, '');
 
+// ---- Cluster label (for runs file naming) ----
+function inferClusterLabel(rpc) {
+  const s = String(rpc || '').toLowerCase();
+  if (s.includes('mainnet')) return 'mainnet';
+  if (s.includes('devnet')) return 'devnet';
+  if (s.includes('testnet')) return 'testnet';
+  return 'custom';
+}
+const CLUSTER = inferClusterLabel(RPC);
+
 // -------- M2 team canonicalization --------
 const DEFAULT_TEAM_ID = 'Wakama_team';
 
 const TEAM_ALIASES = {
   'Wakama Core': DEFAULT_TEAM_ID,
-  team_wakama: DEFAULT_TEAM_ID,
+  'team_wakama': DEFAULT_TEAM_ID,
   'Wakama Team': DEFAULT_TEAM_ID,
   'Wakama team': DEFAULT_TEAM_ID,
-  Wakama_team: DEFAULT_TEAM_ID,
+  'Wakama_team': DEFAULT_TEAM_ID,
 };
 
 function strTrim(x) {
@@ -348,7 +358,30 @@ function buildSimulatedBatch() {
   };
 }
 
-// ---- Confirm Devnet tx ----
+// ---- Fetch slot via RPC getTransaction (more reliable than solana confirm) ----
+function getTxSlotViaRpc(sig) {
+  if (!sig) return null;
+  try {
+    const payload = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getTransaction',
+      params: [sig, { encoding: 'json', maxSupportedTransactionVersion: 0 }],
+    });
+
+    const out = execSync(
+      `curl -sS "${RPC}" -H 'Content-Type: application/json' --data-binary '${payload}'`,
+      { stdio: ['ignore', 'pipe', 'pipe'], shell: '/bin/bash' },
+    ).toString();
+
+    const j = JSON.parse(out);
+    return j?.result?.slot ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Confirm tx ----
 function confirmTx(sig) {
   if (!sig) return null;
   try {
@@ -411,10 +444,10 @@ function inferCountFromBatch(batch) {
 
     const batch = JSON.parse(fs.readFileSync(PATH_JSON, 'utf8'));
 
-    // ✅ preserve source if present, otherwise default
+    // preserve source if present, otherwise default
     SOURCE = strTrim(batch.source) || 'ingest';
 
-    // ✅ read team from batch if present
+    // read team from batch if present
     const batchTeam = batch.team || batch.team_id || batch.teamKey || null;
     team = normalizeTeamId(batchTeam || PUBLISH_TEAM);
 
@@ -424,7 +457,7 @@ function inferCountFromBatch(batch) {
       cid: null,
       sha256: shaLocal,
       team,
-      count: inferredCount, // ✅ avoids "0" when count is stored in count_field or measures length
+      count: inferredCount,
       ts_min: batch.ts_min,
       ts_max: batch.ts_max,
     };
@@ -441,9 +474,7 @@ function inferCountFromBatch(batch) {
       throw new Error('sha mismatch gateway vs local');
     }
   } else {
-    console.warn(
-      '⚠️ PUBLISH_SKIP_SHA_CHECK=1 → skipping gateway integrity check',
-    );
+    console.warn('⚠️ PUBLISH_SKIP_SHA_CHECK=1 → skipping gateway integrity check');
   }
 
   // 3) Emit tx
@@ -451,17 +482,22 @@ function inferCountFromBatch(batch) {
   const memo = JSON.stringify(memoPayload);
   const tx = await emitTxMemo(memo);
 
-  const txInfo = confirmTx(tx);
+  // 3b) Confirm + slot (best effort)
+  const txInfo = confirmTx(tx) || { status: 'unknown', slot: null };
+  if (tx && (txInfo.slot == null)) {
+    const slot2 = getTxSlotViaRpc(tx);
+    if (slot2 != null) txInfo.slot = slot2;
+  }
 
-  // 4) runs csv (format conservé)
+  // 4) runs csv (cluster-aware)
   const day = new Date().toISOString().slice(0, 10);
   fs.mkdirSync('runs', { recursive: true });
   fs.appendFileSync(
-    `runs/devnet_${day}.csv`,
+    `runs/${CLUSTER}_${day}.csv`,
     `${FNAME},${cid},${shaLocal},${tx},${new Date().toISOString()}\n`,
   );
 
-  // 5) receipt JSON (M3 safe isolation via RECEIPTS_DIR)
+  // 5) receipt JSON (safe isolation via RECEIPTS_DIR)
   const rPath = path.join(RECEIPTS_DIR, `${Date.now()}-receipt.json`);
 
   const receipt = {
@@ -478,8 +514,8 @@ function inferCountFromBatch(batch) {
     ts_max: memoPayload?.ts_max ?? null,
 
     ts: new Date().toISOString(),
-    status: tx ? txInfo?.status || 'submitted' : 'n/a',
-    slot: txInfo?.slot || null,
+    status: tx ? (txInfo?.status || 'submitted') : 'n/a',
+    slot: txInfo?.slot ?? null,
   };
 
   fs.writeFileSync(rPath, JSON.stringify(receipt, null, 2), 'utf8');
@@ -496,6 +532,8 @@ function inferCountFromBatch(batch) {
         tx,
         gw: GW,
         receipt: rPath,
+        cluster: CLUSTER,
+        rpc: RPC,
       },
       null,
       2,

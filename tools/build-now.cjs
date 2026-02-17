@@ -6,6 +6,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Args compatibles (ne rien casser)
+// usage:
+//   node tools/build-now.cjs [receiptsDir] [outPath]
+// examples:
+//   node tools/build-now.cjs receipts ../wakama-dashboard/public/now.json
+//   node tools/build-now.cjs receipts_m3_firestore ../wakama-dashboard/public/now_m3_firestore.json
 const receiptsDir = process.argv[2] || 'receipts';
 
 // Par défaut on conserve ton chemin actuel (cross-repo).
@@ -22,6 +27,7 @@ const readJsonSafe = (p) => {
     return null;
   }
 };
+
 const uniq = (arr) => Array.from(new Set(arr));
 
 const isDir = (p) => {
@@ -32,6 +38,7 @@ const isDir = (p) => {
   }
 };
 
+// Recursive walk
 function walk(dir) {
   let out = [];
   let entries = [];
@@ -49,21 +56,18 @@ function walk(dir) {
     } catch {
       continue;
     }
-    if (st.isDirectory()) {
-      out = out.concat(walk(p));
-    } else {
-      out.push(p);
-    }
+    if (st.isDirectory()) out = out.concat(walk(p));
+    else out.push(p);
   }
   return out;
 }
 
+// NOTE: keep for backwards compatibility if someone passes ~/dev/wakama
 function findReceiptsUnder(root) {
   const all = walk(root);
   return all.filter(
     (p) =>
-      p.includes(`${path.sep}receipts${path.sep}`) &&
-      p.endsWith('-receipt.json')
+      p.includes(`${path.sep}receipts${path.sep}`) && p.endsWith('-receipt.json'),
   );
 }
 
@@ -78,6 +82,7 @@ const TEAM_ALIASES = {
   'Wakama_team': CANONICAL_TEAM_ID,
   'CAPN Wakama Team': CANONICAL_TEAM_ID,
   'UJLoG Wakama Team': CANONICAL_TEAM_ID,
+
   // M1 display compat
   'team-scak-coop': 'SCAK Cooperative',
   'team-makm2': 'MAKM2 Partner',
@@ -92,11 +97,9 @@ function normalizeTeam(raw) {
 
 function inferTeamFromFile(fileName) {
   const f = (fileName || '').toLowerCase();
-
   if (f.includes('scak-')) return 'SCAK Cooperative';
   if (f.includes('makm2-')) return 'MAKM2 Partner';
   if (f.includes('techlab-')) return 'TechLab CME';
-
   return '';
 }
 
@@ -114,7 +117,6 @@ const toNum = (v) => {
 // ex: "scak-korhogo-1000-zone-A-Prod-1.json" => 1000
 function inferCountFromFileName(fileName) {
   const s = (fileName || '').toString();
-  // prend un groupe de >=3 chiffres entouré par "-"
   const m = s.match(/-(\d{3,})-/);
   if (!m) return null;
 
@@ -129,7 +131,7 @@ function inferCountFromFileName(fileName) {
 
 function normalizeSource(raw) {
   const s = (raw || '').toString().trim();
-  return s; // on ne force pas un default ici pour ne rien casser
+  return s; // ne pas forcer un default
 }
 
 function normalizeStatus(rawStatus, tx) {
@@ -139,7 +141,7 @@ function normalizeStatus(rawStatus, tx) {
 }
 
 // Collecte (2 modes)
-// 1) Mode classique: receiptsDir contient directement des .json
+// 1) Mode classique: receiptsDir contient directement des *.json
 // 2) Mode root-scan: receiptsDir est un root (ex: ~/dev/wakama),
 //    on scanne tous les */receipts/*-receipt.json
 let files = [];
@@ -147,10 +149,13 @@ let files = [];
 if (isDir(receiptsDir)) {
   const direct = fs
     .readdirSync(receiptsDir)
-    .filter((f) => f.endsWith('.json'));
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => path.join(receiptsDir, f));
 
+  // IMPORTANT: en isolation M3 (receipts_m3_firestore), direct[] contient bien les receipts
+  // => on ne doit PAS basculer sur findReceiptsUnder() (qui ne trouverait rien car il cherche "/receipts/")
   if (direct.length > 0) {
-    files = direct.map((f) => path.join(receiptsDir, f)).sort();
+    files = direct.sort();
   } else {
     files = findReceiptsUnder(receiptsDir).sort();
   }
@@ -173,7 +178,7 @@ for (const p of files) {
 
   if (!cid) continue; // ignorer reçus incomplets
 
-  // ✅ team: accepte legacy keys + fallback par file + fallback canonique
+  // team: accepte legacy keys + fallback par file + fallback canonique
   const rawTeam =
     (typeof j.team === 'string' && j.team) ||
     (typeof j.team_id === 'string' && j.team_id) ||
@@ -183,13 +188,13 @@ for (const p of files) {
 
   const team = normalizeTeam(rawTeam) || CANONICAL_TEAM_ID;
 
-  // ✅ source: string safe
+  // source: string safe
   const source = normalizeSource(j.source);
 
-  // ✅ status: évite "unknown" si tx présent
+  // status: évite "unknown" si tx présent
   const status = normalizeStatus(j.status, tx);
 
-  // ✅ compat M1/M2 points/count robuste + fallback filename
+  // compat M1/M2 points/count robuste + fallback filename
   const inferredFromName = inferCountFromFileName(j.file || f);
 
   const count =
@@ -234,10 +239,8 @@ for (const p of files) {
 // Tri: plus récent en premier par ts (string compare OK sur ISO)
 items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
 
-// ✅ FIX: totals.files = uniquement les items mesurables
-const itemsWithMetrics = items.filter(
-  (it) => it.count != null || it.points != null
-);
+// totals.files = uniquement les items mesurables
+const itemsWithMetrics = items.filter((it) => it.count != null || it.points != null);
 
 const totals = {
   files: itemsWithMetrics.length,
