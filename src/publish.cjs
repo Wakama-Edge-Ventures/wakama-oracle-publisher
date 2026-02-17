@@ -1,11 +1,17 @@
 // src/publish.cjs
-require('dotenv').config({ path: __dirname + '/../.env' });
+const path = require('path');
+
+require('dotenv').config({
+  path: process.env.ENV_FILE
+    ? path.resolve(process.env.ENV_FILE)
+    : path.join(__dirname, '..', '.env'),
+  override: true, // écrase les variables déjà exportées dans le shell
+});
 
 // CommonJS, Node >=18
 const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
-const path = require('path');
 
 // ---- Receipts dir override (M3 safe isolation) ----
 const RECEIPTS_DIR =
@@ -35,6 +41,11 @@ const RPC =
   process.env.ANCHOR_PROVIDER_URL ||
   process.env.RPC_URL ||
   'https://api.devnet.solana.com';
+
+const RPC_SOURCE =
+  process.env.ANCHOR_PROVIDER_URL
+    ? 'ANCHOR_PROVIDER_URL'
+    : (process.env.RPC_URL ? 'RPC_URL' : 'default');
 
 const WALLET =
   process.env.ANCHOR_WALLET ||
@@ -520,6 +531,7 @@ function inferCountFromBatch(batch) {
 
   fs.writeFileSync(rPath, JSON.stringify(receipt, null, 2), 'utf8');
 
+  // ---- Final output (JSON only) ----
   console.log(
     JSON.stringify(
       {
@@ -532,8 +544,13 @@ function inferCountFromBatch(batch) {
         tx,
         gw: GW,
         receipt: rPath,
+
+        // Debug cluster/rpc resolution
         cluster: CLUSTER,
         rpc: RPC,
+        rpc_source: RPC_SOURCE,
+        env_rpc_url: process.env.RPC_URL || null,
+        env_anchor_provider_url: process.env.ANCHOR_PROVIDER_URL || null,
       },
       null,
       2,

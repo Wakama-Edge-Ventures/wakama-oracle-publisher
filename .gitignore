@@ -26,3 +26,7 @@ runs/
 
 # local receipts (isolated runtime)
 receipts_m3_firestore/
+
+# local receipts (never commit)
+receipts_devnet/
+receipts_mainnet/
