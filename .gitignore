@@ -23,3 +23,6 @@ src/publish.cjs.bak
 receipts/
 runs/
 .env
+
+# local receipts (isolated runtime)
+receipts_m3_firestore/
