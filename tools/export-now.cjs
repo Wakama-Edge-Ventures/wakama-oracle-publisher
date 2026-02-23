@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Compat: conserve l'usage
 //   node tools/export-now.cjs /abs/path/now.json
-// et délègue à build-now.cjs en s'appuyant sur les receipts.
+// Nouveau (optionnel):
+//   RECEIPTS_DIR=receipts_mainnet node tools/export-now.cjs now.json
+//   node tools/export-now.cjs now.json receipts_mainnet
 
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -15,19 +17,20 @@ if (!outArg) {
 }
 
 // Normalise la sortie même si l'utilisateur passe un chemin relatif.
-const outPath = path.isAbsolute(outArg)
-  ? outArg
-  : path.resolve(process.cwd(), outArg);
+const outPath = path.isAbsolute(outArg) ? outArg : path.resolve(process.cwd(), outArg);
 
-// Dir des reçus (projet/receipts). Chemin explicite pour éviter les cwd surprises.
-const receiptsDir = path.join(__dirname, '..', 'receipts');
+// Receipts dir:
+// - priorité à ENV RECEIPTS_DIR
+// - sinon 2e arg optionnel
+// - sinon fallback historique: ../receipts
+const receiptsArg = process.argv[3];
+const receiptsRaw = process.env.RECEIPTS_DIR || receiptsArg || path.join(__dirname, '..', 'receipts');
+const receiptsDir = path.isAbsolute(receiptsRaw) ? receiptsRaw : path.resolve(process.cwd(), receiptsRaw);
 
 // Tolérance au typo historique éventuel: build-now.cjs vs buil-now.cjs
 const buildNowPrimary = path.join(__dirname, 'build-now.cjs');
 const buildNowFallback = path.join(__dirname, 'buil-now.cjs');
-const buildNowPath = fs.existsSync(buildNowPrimary)
-  ? buildNowPrimary
-  : buildNowFallback;
+const buildNowPath = fs.existsSync(buildNowPrimary) ? buildNowPrimary : buildNowFallback;
 
 // build-now.cjs attend: <receiptsDir> <outPath>
 const args = [buildNowPath, receiptsDir, outPath];
